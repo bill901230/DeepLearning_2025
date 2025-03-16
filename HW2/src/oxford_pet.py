@@ -7,6 +7,8 @@ from PIL import Image
 from tqdm import tqdm
 from urllib.request import urlretrieve
 
+from torch.utils.data import DataLoader
+
 class OxfordPetDataset(torch.utils.data.Dataset):
     def __init__(self, root, mode="train", transform=None):
 
@@ -128,7 +130,8 @@ def extract_archive(filepath):
     if not os.path.exists(dst_dir):
         shutil.unpack_archive(filepath, extract_dir)
 
-def load_dataset(data_path, mode):
+def load_dataset(data_path, mode, batch_size, shuffle=True):
     # implement the load dataset function here
-
-    assert False, "Not implemented yet!"
+    dataset = SimpleOxfordPetDataset(root=data_path, mode=mode, transform=None)
+    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle)
+    return dataloader
