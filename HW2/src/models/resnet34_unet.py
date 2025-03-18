@@ -5,10 +5,10 @@ class ConvBlock(nn.Module):
     def __init__(self, in_ch, out_ch, stride=1):
         super().__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, padding=1),
+            nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, 3, padding=1),
+            nn.Conv2d(out_ch, out_ch, 3, stride=1, padding=1),
             nn.BatchNorm2d(out_ch),
             nn.ReLU(inplace=True),
         )
@@ -41,18 +41,25 @@ class ResNetEncoder(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.initial(x)  # (64, H/2, W/2)
+        x = self.initial(x)  # (64, H/4, W/4)
         enc1 = self.layer1(x)  # (64, H/4, W/4)
         enc2 = self.layer2(enc1)  # (128, H/8, W/8)
         enc3 = self.layer3(enc2)  # (256, H/16, W/16)
-        enc4 = self.layer4(enc2)  # (512, H/16, W/16)
-        return enc1, enc2, enc3, enc4
+        enc4 = self.layer4(enc3)  # (512, H/32, W/32)
+        return x, enc1, enc2, enc3, enc4
 
 class DecoderBlock(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
         self.up = nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2)
-        self.conv = ConvBlock(in_ch, out_ch)
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True)
+        )
 
     def forward(self, x, skip):
         x = self.up(x)
@@ -64,23 +71,41 @@ class ResNet34_UNet(nn.Module):
         super().__init__()
         self.encoder = ResNetEncoder()
 
-        # self.bottleneck = ConvBlock(512, 512)
+        self.bridge = nn.Sequential(
+            nn.Conv2d(512, 1024, kernel_size=3, padding=1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
 
-        self.dec4 = DecoderBlock(512+256, 256)
-        self.dec3 = DecoderBlock(256+128, 128)
-        self.dec2 = DecoderBlock(128+64, 64)
-        self.dec1 = DecoderBlock(64+64, 32)
+        self.dec5 = DecoderBlock(512+512, 512)
+        self.dec4 = DecoderBlock(512, 256)
+        self.dec3 = DecoderBlock(256, 128)
+        self.dec2 = DecoderBlock(128, 64)
+        self.dec1 = nn.Sequential(
+            nn.Conv2d(64+64, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 32, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True)
+        )
 
-        self.final_conv = nn.Conv2d(64, 1, kernel_size=1)
+        self.final_conv = nn.Sequential(
+            nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
+            nn.Conv2d(32, out_channels, kernel_size=3, padding=1)
+        )
 
     def forward(self, x):
-        enc1, enc2, enc3, enc4 = self.encoder(x)
+        enc0, enc1, enc2, enc3, enc4 = self.encoder(x)
 
-        bottleneck = self.bottleneck(enc4)
+        bridge = self.bridge(enc4) # (1024, H/64, W/64)
 
-        dec4 = self.dec4(bottleneck, enc4)
-        dec3 = self.dec3(dec4, enc3)
-        dec2 = self.dec2(dec3, enc2)
-        dec1 = self.dec1(dec2, enc1)
+        dec5 = self.dec5(bridge, enc4) # (512, H/32, W/32)
+        dec4 = self.dec4(dec5, enc3) # (256, H/16, W/16)
+        dec3 = self.dec3(dec4, enc2) # (128, H/8, W/8)
+        dec2 = self.dec2(dec3, enc1) # (64, H/4, W/4)
+        dec1 = self.dec1(dec2, enc0) # (32, H/2, W/2)
+
 
         return self.final_conv(dec1)
