@@ -10,9 +10,9 @@ def evaluate(net, data, device):
         for batch in data:
             images = batch["image"].to(device, dtype=torch.float32)
             masks = batch["mask"].to(device, dtype=torch.float32)
-            print(torch.unique(masks))
+            # print(torch.unique(masks))
             outputs = net(images)
-            print(f"Outputs min: {outputs.min()}, max: {outputs.max()}")
+            # print(f"Outputs min: {outputs.min()}, max: {outputs.max()}")
 
             preds = torch.sigmoid(outputs) > 0.5  
 
