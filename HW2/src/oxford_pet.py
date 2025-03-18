@@ -130,8 +130,7 @@ def extract_archive(filepath):
     if not os.path.exists(dst_dir):
         shutil.unpack_archive(filepath, extract_dir)
 
-def load_dataset(data_path, mode, batch_size, shuffle=True):
-    # implement the load dataset function here
+def load_dataset(data_path, mode, batch_size, shuffle=True, num_workers=0):
     dataset = SimpleOxfordPetDataset(root=data_path, mode=mode, transform=None)
-    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle)
+    dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
