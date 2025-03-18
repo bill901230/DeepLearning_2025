@@ -9,6 +9,16 @@ from models.resnet34_unet import ResNet34_UNet
 from evaluate import evaluate
 from tqdm import tqdm
 
+class DiceLoss(nn.Module):
+    def __init__(self, smooth=1.0):
+        super(DiceLoss, self).__init__()
+        self.smooth = smooth
+
+    def forward(self, preds, targets):
+        preds = torch.sigmoid(preds)  # 確保 logits 轉為概率
+        num = 2 * torch.sum(preds * targets) + self.smooth
+        den = torch.sum(preds + targets) + self.smooth
+        return 1 - num / den  # Dice Loss 越小越好
 
 def train(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -29,7 +39,8 @@ def train(args):
     #     print(f"Using {torch.cuda.device_count()} GPUs!")
     #     model = nn.DataParallel(model)
 
-    criterion = nn.BCEWithLogitsLoss()
+    bce_loss = nn.BCEWithLogitsLoss()
+    dice_loss = DiceLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
     best_dice = 0.0
@@ -45,7 +56,7 @@ def train(args):
             masks = batch["mask"].to(device, dtype=torch.float32)
 
             outputs = model(images)
-            loss = criterion(outputs, masks)
+            loss = bce_loss(outputs, masks)+dice_loss(outputs, masks)
 
             optimizer.zero_grad()
             loss.backward()
