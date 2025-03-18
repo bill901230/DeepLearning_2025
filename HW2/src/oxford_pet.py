@@ -1,13 +1,14 @@
 import os
 import torch
+import torchvision.transforms as T
 import shutil
 import numpy as np
-
+import random
 from PIL import Image
 from tqdm import tqdm
 from urllib.request import urlretrieve
-
 from torch.utils.data import DataLoader
+from utils import random_horizontal_flip, random_rotation, random_scaling, random_brightness_contrast, mixup, cutmix
 
 class OxfordPetDataset(torch.utils.data.Dataset):
     def __init__(self, root, mode="train", transform=None):
@@ -98,6 +99,68 @@ class SimpleOxfordPetDataset(OxfordPetDataset):
         sample["trimap"] = np.expand_dims(trimap, 0)
 
         return sample
+    
+class AugmentedOxfordPetDataset(SimpleOxfordPetDataset):
+    def __init__(self, root, mode="train", transform=None, use_mixup=False, use_cutmix=False):
+        super().__init__(root, mode, transform)
+        self.use_mixup = use_mixup if mode == "train" else False
+        self.use_cutmix = use_cutmix if mode == "train" else False
+
+    def __getitem__(self, idx):
+        sample = super().__getitem__(idx)
+        image, mask, trimap = sample["image"], sample["mask"], sample["trimap"]
+
+        image = Image.fromarray(np.moveaxis(image, 0, -1))
+        mask = Image.fromarray(mask[0])
+        trimap = Image.fromarray(trimap[0])
+
+        if self.mode == "train":
+            # Augmentation
+            image, mask, trimap = random_horizontal_flip(image, mask, trimap)
+            image, mask, trimap = random_rotation(image, mask, trimap)
+            image, mask, trimap = random_scaling(image, mask, trimap)
+            image = random_brightness_contrast(image)
+
+            # MixUp
+            if self.use_mixup and random.random() < 0.5:
+                mix_idx = random.randint(0, len(self.filenames) - 1)
+                sample_mix = super().__getitem__(mix_idx)
+                image_mix, mask_mix, trimap_mix = sample_mix["image"], sample_mix["mask"], sample_mix["trimap"]
+                image_mix = Image.fromarray(np.moveaxis(image_mix, 0, -1))
+                mask_mix = Image.fromarray(mask_mix[0])
+                trimap_mix = Image.fromarray(trimap_mix[0])
+                image, mask, trimap = mixup(image, mask, trimap, image_mix, mask_mix, trimap_mix)
+
+            # CutMix
+            if self.use_cutmix and random.random() < 0.5:
+                cut_idx = random.randint(0, len(self.filenames) - 1)
+                sample_cut = super().__getitem__(cut_idx)
+                image_cut, mask_cut, trimap_cut = sample_cut["image"], sample_cut["mask"], sample_cut["trimap"]
+                image_cut = Image.fromarray(np.moveaxis(image_cut, 0, -1))
+                mask_cut = Image.fromarray(mask_cut[0])
+                trimap_cut = Image.fromarray(trimap_cut[0])
+                image, mask, trimap = cutmix(image, mask, trimap, image_cut, mask_cut, trimap_cut)
+
+        image = np.moveaxis(np.array(image), -1, 0)
+        mask = np.expand_dims(np.array(mask), 0)
+        trimap = np.expand_dims(np.array(trimap), 0)
+
+        sample["image"] = image
+        sample["mask"] = mask
+        sample["trimap"] = trimap
+        return sample
+
+class ToTensorTransform:
+    def __call__(self, image, mask, trimap):
+        transform = T.Compose([ 
+            T.ToTensor(),
+            T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]) 
+        ])
+
+        return {
+            "image": transform(image),
+            "mask": torch.tensor(mask, dtype=torch.float32).unsqueeze(0),
+        }
 
 
 class TqdmUpTo(tqdm):
@@ -123,14 +186,13 @@ def download_url(url, filepath):
         urlretrieve(url, filename=filepath, reporthook=t.update_to, data=None)
         t.total = t.n
 
-
 def extract_archive(filepath):
     extract_dir = os.path.dirname(os.path.abspath(filepath))
     dst_dir = os.path.splitext(filepath)[0]
     if not os.path.exists(dst_dir):
         shutil.unpack_archive(filepath, extract_dir)
 
-def load_dataset(data_path, mode, batch_size, shuffle=True, num_workers=0):
-    dataset = SimpleOxfordPetDataset(root=data_path, mode=mode, transform=None)
+def load_dataset(data_path, mode, batch_size, shuffle=True, num_workers=0, transform=ToTensorTransform()):
+    dataset = AugmentedOxfordPetDataset(root=data_path, mode=mode, use_cutmix=(mode == "train"), use_mixup=(mode == "train"), transform=transform)
     dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
