@@ -11,6 +11,11 @@ from urllib.request import urlretrieve
 from torch.utils.data import DataLoader
 from utils import random_horizontal_flip, random_rotation, random_brightness_contrast, mixup, cutmix
 
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+
 class OxfordPetDataset(torch.utils.data.Dataset):
     def __init__(self, root, mode="train", transform=None):
 
@@ -104,30 +109,30 @@ class AugmentedOxfordPetDataset(SimpleOxfordPetDataset):
         sample = super().__getitem__(idx)
         image, mask = sample["image"], sample["mask"]
 
-        # if self.mode == "train":
-        #     # Augmentation
-        #     image, mask = random_horizontal_flip(image, mask)
-        #     image, mask = random_rotation(image, mask)
-        #     # image, mask = random_scaling(image, mask)
-        #     image = random_brightness_contrast(image)
+        if self.mode == "train":
+            # Augmentation
+            image, mask = random_horizontal_flip(image, mask)
+            image, mask = random_rotation(image, mask)
+            # image, mask = random_scaling(image, mask)
+            image = random_brightness_contrast(image)
 
         image = np.array(image).astype(np.float32) / 255.0  # HWC
         mask = np.array(mask).astype(np.float32) # HW
 
-        # if self.mode == "train":
-        #     # MixUp
-        #     if self.use_mixup and random.random() < 0.5:
-        #         mix_idx = random.randint(0, len(self.filenames) - 1)
-        #         sample_mix = super().__getitem__(mix_idx)
-        #         image_mix, mask_mix = np.array(sample_mix["image"]).astype(np.float32) / 255.0, np.array(sample_mix["mask"]).astype(np.float32) / 255.0
-        #         image, mask = mixup(image, mask, image_mix, mask_mix)
+        if self.mode == "train":
+            # MixUp
+            if self.use_mixup and random.random() < 0.5:
+                mix_idx = random.randint(0, len(self.filenames) - 1)
+                sample_mix = super().__getitem__(mix_idx)
+                image_mix, mask_mix = np.array(sample_mix["image"]).astype(np.float32) / 255.0, np.array(sample_mix["mask"]).astype(np.float32) 
+                image, mask = mixup(image, mask, image_mix, mask_mix)
 
-        #     # CutMix
-        #     if self.use_cutmix and random.random() < 0.5:
-        #         cut_idx = random.randint(0, len(self.filenames) - 1)
-        #         sample_cut = super().__getitem__(cut_idx)
-        #         image_cut, mask_cut = np.array(sample_cut["image"]).astype(np.float32) / 255.0, np.array(sample_cut["mask"]).astype(np.float32) / 255.0
-        #         image, mask = cutmix(image, mask, image_cut, mask_cut)
+            # CutMix
+            if self.use_cutmix and random.random() < 0.5:
+                cut_idx = random.randint(0, len(self.filenames) - 1)
+                sample_cut = super().__getitem__(cut_idx)
+                image_cut, mask_cut = np.array(sample_cut["image"]).astype(np.float32) / 255.0, np.array(sample_cut["mask"]).astype(np.float32) 
+                image, mask = cutmix(image, mask, image_cut, mask_cut)
 
         if self.transform is not None:
             sample = self.transform(image=image, mask=mask)

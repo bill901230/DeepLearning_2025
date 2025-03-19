@@ -2,6 +2,10 @@ import random
 from PIL import Image, ImageEnhance
 import numpy as np
 
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+
 def dice_score(pred, target, smooth=1e-6):
     pred = pred.view(-1).float()
     target = target.view(-1).float()
