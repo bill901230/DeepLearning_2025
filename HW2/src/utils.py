@@ -26,13 +26,13 @@ def random_rotation(image, mask, angle_range=(-30, 30)):
     mask = mask.rotate(angle, Image.NEAREST)
     return image, mask
 
-# def random_scaling(image, mask, scale_range=(0.8, 1.2)):
-#     scale = random.uniform(scale_range[0], scale_range[1])
-#     w, h = image.size
-#     new_w, new_h = int(w * scale), int(h * scale)
-#     image = image.resize((new_w, new_h), Image.BILINEAR)
-#     mask = mask.resize((new_w, new_h), Image.NEAREST)
-#     return image, mask
+def random_scaling(image, mask, scale_range=(0.8, 1.2)):
+    scale = random.uniform(scale_range[0], scale_range[1])
+    w, h = image.size
+    new_w, new_h = int(w * scale), int(h * scale)
+    image = image.resize((new_w, new_h), Image.BILINEAR)
+    mask = mask.resize((new_w, new_h), Image.NEAREST)
+    return image, mask
 
 def random_brightness_contrast(image, brightness_range=(0.8, 1.2), contrast_range=(0.8, 1.2)):
     brightness_factor = random.uniform(brightness_range[0], brightness_range[1])
