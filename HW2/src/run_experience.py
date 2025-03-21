@@ -2,13 +2,13 @@ import os
 
 data_path = "./dataset/oxford-iiit-pet"  
 epochs = 50
-learning_rate = 1e-3
+learning_rate = 1e-4
 model_name = "unet"
 # model_name = "resnet34"
 # gpu = "0"
 gpu = "2"
 
-batch_sizes = [4]
+batch_sizes = [64, 128]
 
 for bs in batch_sizes:
     print(f"Running {model_name} with batch_size {bs} on GPU {gpu}")
