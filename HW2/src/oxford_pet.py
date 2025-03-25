@@ -189,3 +189,6 @@ def load_dataset(data_path, mode, batch_size, shuffle=True, num_workers=0, trans
     dataset = AugmentedOxfordPetDataset(root=data_path, mode=mode, use_cutmix=(mode == "train"), use_mixup=(mode == "train"), transform=transform)
     dataloader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
     return dataloader
+
+if __name__ == "__main__":
+    OxfordPetDataset.download('/home/whp/dlp')
