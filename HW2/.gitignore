@@ -3,8 +3,8 @@ dataset/
 *.pyc
 run_experience.py
 history*
-report*
 *.png
 *.ipynb
 flow*
 *.zip
+*.tex
