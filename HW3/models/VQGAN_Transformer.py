@@ -88,25 +88,48 @@ class MaskGit(nn.Module):
     
 ##TODO3 step1-1: define one iteration decoding   
     @torch.no_grad()
-    def inpainting(self):
-        raise Exception('TODO3 step1-1!')
-        logits = self.transformer(None)
+    def inpainting(self, z_indices_predict=None, mask_bc=None, ratio=0.0):
+        if z_indices_predict is None:
+            z_indices_predict = torch.full(
+                (1, self.num_image_tokens),
+                self.mask_token_id,
+                dtype=torch.long,
+                device=self.transformer.device
+            )
+        if mask_bc is None:
+            mask_bc = torch.ones_like(z_indices_predict, dtype=torch.bool)
+        logits = self.transformer(z_indices_predict)
+
         #Apply softmax to convert logits into a probability distribution across the last dimension.
-        logits = None
+        logits = torch.softmax(logits, dim=-1)
 
         #FIND MAX probability for each token value
-        z_indices_predict_prob, z_indices_predict = None
+        z_indices_predict_prob, z_indices_predict_candidate = torch.max(logits, dim=-1)
 
-        ratio=None 
         #predicted probabilities add temperature annealing gumbel noise as confidence
-        g = None  # gumbel noise
+        g = -torch.log(-torch.log(torch.rand_like(z_indices_predict_prob)))  # gumbel noise
         temperature = self.choice_temperature * (1 - ratio)
         confidence = z_indices_predict_prob + temperature * g
         
         #hint: If mask is False, the probability should be set to infinity, so that the tokens are not affected by the transformer's prediction
+        confidence = torch.where(
+            mask_bc,
+            confidence,
+            torch.tensor(float('-inf'), device=confidence.device)
+        )
         #sort the confidence for the rank 
+        _, sorted_indices = torch.sort(confidence, descending=True)
+
         #define how much the iteration remain predicted tokens by mask scheduling
+        num_to_keep = int(self.num_image_tokens * (1 - self.gamma(ratio)))
+
+        new_z_indices_predict = z_indices_predict.clone()
+        new_mask_bc = mask_bc.clone()
+
         ##At the end of the decoding process, add back the original(non-masked) token values
+        for idx in sorted_indices[0][:num_to_keep]:
+            new_z_indices_predict[0, idx] = z_indices_predict_candidate[0, idx]
+            new_mask_bc[0, idx] = False
         
         mask_bc=None
         return z_indices_predict, mask_bc
