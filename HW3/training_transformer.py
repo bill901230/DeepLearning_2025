@@ -25,10 +25,10 @@ class TrainTransformer:
     def prepare_training():
         os.makedirs("transformer_checkpoints", exist_ok=True)
 
-    def train_one_epoch(self, train_loader):
+    def train_one_epoch(self, train_loader, epoch):
         self.model.train()
         total_loss = 0
-        with tqdm(total=len(train_loader), desc=f'Train') as pbar:
+        with tqdm(total=len(train_loader), desc=f'Train epoch:{epoch}') as pbar:
             for i, imgs in enumerate(train_loader):
                 imgs = imgs.to(self.device)
                 logits, target = self.model(imgs)  #predict, gt
@@ -111,21 +111,21 @@ class TrainTransformer:
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="MaskGIT")
     #TODO2:check your dataset path is correct 
-    parser.add_argument('--train_d_path', type=str, default="./cat_face/train/", help='Training Dataset Path')
-    parser.add_argument('--val_d_path', type=str, default="./cat_face/val/", help='Validation Dataset Path')
+    parser.add_argument('--train_d_path', type=str, default="lab3_dataset/train", help='Training Dataset Path')
+    parser.add_argument('--val_d_path', type=str, default="lab3_dataset/val", help='Validation Dataset Path')
     parser.add_argument('--checkpoint-path', type=str, default='./checkpoints/last_ckpt.pt', help='Path to checkpoint.')
-    parser.add_argument('--device', type=str, default="cuda:0", help='Which device the training is on.')
+    parser.add_argument('--device', type=str, default="cuda:1", help='Which device the training is on.')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker')
     parser.add_argument('--batch-size', type=int, default=10, help='Batch size for training.')
     parser.add_argument('--partial', type=float, default=1.0, help='Number of epochs to train (default: 50)')    
     parser.add_argument('--accum-grad', type=int, default=10, help='Number for gradient accumulation.')
 
     #you can modify the hyperparameters 
-    parser.add_argument('--epochs', type=int, default=0, help='Number of epochs to train.')
+    parser.add_argument('--epochs', type=int, default=50, help='Number of epochs to train.')
     parser.add_argument('--save-per-epoch', type=int, default=1, help='Save CKPT per ** epochs(defcault: 1)')
     parser.add_argument('--start-from-epoch', type=int, default=0, help='Number of epochs to train.')
-    parser.add_argument('--ckpt-interval', type=int, default=0, help='Number of epochs to train.')
-    parser.add_argument('--learning-rate', type=float, default=0, help='Learning rate.')
+    parser.add_argument('--ckpt-interval', type=int, default=5, help='Number of epochs to train.')
+    parser.add_argument('--learning-rate', type=float, default=1e-4, help='Learning rate.')
 
     parser.add_argument('--MaskGitConfig', type=str, default='config/MaskGit.yml', help='Configurations for TransformerVQGAN')
 
