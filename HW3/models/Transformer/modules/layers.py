@@ -6,6 +6,19 @@ import math
 class MultiHeadAttention(nn.Module):
     def __init__(self, dim=768, num_heads=16, attn_drop=0.1):
         super(MultiHeadAttention, self).__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim//num_heads
+        assert self.head_dim * num_heads == dim
+
+        self.scale = math.sqrt(self.head_dim)
+
+        self.q_proj = nn.Linear(dim, dim)  # 查詢投影
+        self.k_proj = nn.Linear(dim, dim)  # 鍵投影
+        self.v_proj = nn.Linear(dim, dim)  # 值投影
+        self.out_proj = nn.Linear(dim, dim)  # 輸出投影
+
+        self.attn_drop = nn.Dropout(attn_drop)
 
     def forward(self, x):
         ''' Hint: input x tensor shape is (batch_size, num_image_tokens, dim), 
@@ -15,7 +28,26 @@ class MultiHeadAttention(nn.Module):
             Total d_k , d_v set to 768
             d_k , d_v for one head will be 768//16.
         '''
-        raise Exception('TODO1!')
+        batch_size, seq_len, dim = x.size()
+        q = self.q_proj(x)  # (batch_size, seq_len, dim)
+        k = self.k_proj(x)  # (batch_size, seq_len, dim)
+        v = self.v_proj(x)  # (batch_size, seq_len, dim)
+
+        q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        attn_scores = (q @ k.transpose(-2, -1)) / self.scale
+        attn_probs = torch.softmax(attn_scores, dim=-1)
+        attn_probs = self.attn_drop(attn_probs)
+
+        context = (attn_probs @ v).transpose(1, 2).contiguous()
+        context = context.view(batch_size, seq_len, dim)
+        output = self.out_proj(context)  # (batch_size, seq_len, dim)
+
+        return output
+
+
 
 class MLP(nn.Sequential):
     def __init__(self, dim=768, hidden_dim=3072, drop_rate=0.1):
