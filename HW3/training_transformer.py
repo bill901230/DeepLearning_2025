@@ -15,22 +15,96 @@ from torch.utils.data import DataLoader
 class TrainTransformer:
     def __init__(self, args, MaskGit_CONFIGS):
         self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=args.device)
+        self.args = args
+        self.device = args.device
         self.optim,self.scheduler = self.configure_optimizers()
         self.prepare_training()
+        self.best_val_loss = float('inf')
         
     @staticmethod
     def prepare_training():
         os.makedirs("transformer_checkpoints", exist_ok=True)
 
-    def train_one_epoch(self):
-        pass
+    def train_one_epoch(self, train_loader):
+        self.model.train()
+        total_loss = 0
+        with tqdm(total=len(train_loader), desc=f'Train') as pbar:
+            for i, imgs in enumerate(train_loader):
+                imgs = imgs.to(self.device)
+                logits, target = self.model(imgs)  #predict, gt
+                
+                loss = F.cross_entropy(
+                    logits.reshape(-1, logits.size(-1)), 
+                    target.reshape(-1),
+                )
+                
+                loss = loss / self.args.accum_grad
+                loss.backward()
+                
+                if (i + 1) % self.args.accum_grad == 0 or (i + 1) == len(train_loader):
+                    self.optim.step()
+                    self.optim.zero_grad()
+                
+                total_loss += loss.item() * self.args.accum_grad
+                pbar.set_postfix(loss=total_loss / (i + 1))
+                pbar.update(1)
+        
+        avg_loss = total_loss / len(train_loader)
+        return avg_loss
 
-    def eval_one_epoch(self):
-        pass
+    def eval_one_epoch(self, val_loader):
+        self.model.eval()
+        total_loss = 0
+        
+        with torch.no_grad():
+            with tqdm(total=len(val_loader), desc='Validation') as pbar:
+                for i, imgs in enumerate(val_loader):
+                    imgs = imgs.to(self.device)
+                    logits, target = self.model(imgs)
+                    
+                    loss = F.cross_entropy(
+                        logits.reshape(-1, logits.size(-1)), 
+                        target.reshape(-1),
+                    )
+                    
+                    total_loss += loss.item()
+                    pbar.set_postfix(loss=total_loss / (i + 1))
+                    pbar.update(1)
+        
+        avg_loss = total_loss / len(val_loader)
+        return avg_loss
+    
+    def save_checkpoint(self, epoch, is_best=False):
+        checkpoint_path = os.path.join('transformer_checkpoints', f'epoch_{epoch}.pt')
+        best_model_path = os.path.join('transformer_checkpoints', 'best_model.pt')
+        
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optim.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else None,
+            'best_val_loss': self.best_val_loss,
+        }, checkpoint_path)
+        
+        if is_best:
+            torch.save(self.model.state_dict(), best_model_path)
+            print(f"Saved best model to {best_model_path}")
+            
+        print(f"Saved checkpoint to {checkpoint_path}")
+        
 
     def configure_optimizers(self):
-        optimizer = None
-        scheduler = None
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(),
+            lr=self.args.learning_rate,
+            betas=(0.9, 0.95),
+            weight_decay=0.1
+        )
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.args.epochs,
+            eta_min=1e-5
+        )
         return optimizer,scheduler
 
 
@@ -78,4 +152,17 @@ if __name__ == '__main__':
     
 #TODO2 step1-5:    
     for epoch in range(args.start_from_epoch+1, args.epochs+1):
-        pass
+        train_loss = train_transformer.train_one_epoch(train_loader, epoch)
+        print(f"Epoch {epoch} Train Loss: {train_loss:.4f}")
+        
+        val_loss = train_transformer.eval_one_epoch(val_loader)
+        print(f"Epoch {epoch} Validation Loss: {val_loss:.4f}")
+        
+        train_transformer.scheduler.step()
+        
+        is_best = val_loss < train_transformer.best_val_loss
+        if is_best:
+            train_transformer.best_val_loss = val_loss
+        
+        if epoch % args.save_per_epoch == 0 or is_best:
+            train_transformer.save_checkpoint(epoch, is_best)

@@ -34,8 +34,8 @@ class MaskGit(nn.Module):
 ##TODO2 step1-1: input x fed to vqgan encoder to get the latent and zq
     @torch.no_grad()
     def encode_to_z(self, x):
-        raise Exception('TODO2 step1-1!')
-        return None
+        _, z_indices, _ = self.vqgan.encode(x)
+        return z_indices
     
 ##TODO2 step1-2:    
     def gamma_func(self, mode="cosine"):
@@ -50,24 +50,40 @@ class MaskGit(nn.Module):
         Returns: The mask rate (float).
 
         """
+        def linear_gamma(ratio):
+            return ratio
+        def cosine_gamma(ratio):
+            return math.cos(ratio * math.pi / 2)
+        def square_gamma(ratio):
+            return ratio ** 2
+        
         if mode == "linear":
-            raise Exception('TODO2 step1-2!')
-            return None
+            return linear_gamma
         elif mode == "cosine":
-            raise Exception('TODO2 step1-2!')
-            return None
+            return cosine_gamma
         elif mode == "square":
-            raise Exception('TODO2 step1-2!')
-            return None
+            return square_gamma
         else:
             raise NotImplementedError
 
 ##TODO2 step1-3:            
     def forward(self, x):
+        z_indices=self.encode_to_z(x) #ground truth
         
-        z_indices=None #ground truth
-        logits = None  #transformer predict the probability of tokens
-        raise Exception('TODO2 step1-3!')
+        # decide number of token to be masked
+        mask_ratio = torch.rand(1).item()
+        num_masked = int(self.num_image_tokens * self.gamma(mask_ratio))
+
+        # mask
+        mask = torch.zeros_like(z_indices, dtype=torch.bool)
+        mask_indices = torch.randperm(self.num_image_tokens)[:num_masked]
+        mask[mask_indices] = True
+
+        z_indices_masked = z_indices.clone()
+        z_indices_masked[mask] = self.mask_token_id
+
+
+        logits = self.transformer(z_indices_masked)  #transformer predict the probability of tokens
         return logits, z_indices
     
 ##TODO3 step1-1: define one iteration decoding   
