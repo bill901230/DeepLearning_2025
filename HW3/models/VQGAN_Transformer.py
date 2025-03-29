@@ -34,7 +34,9 @@ class MaskGit(nn.Module):
 ##TODO2 step1-1: input x fed to vqgan encoder to get the latent and zq
     @torch.no_grad()
     def encode_to_z(self, x):
+        batch_size = x.size(0)
         _, z_indices, _ = self.vqgan.encode(x)
+        z_indices = z_indices.view(batch_size, self.num_image_tokens)
         return z_indices
     
 ##TODO2 step1-2:    
@@ -68,20 +70,28 @@ class MaskGit(nn.Module):
 
 ##TODO2 step1-3:            
     def forward(self, x):
+        batch_size = x.size(0)
+        # print("Input shape:", x.shape)
         z_indices=self.encode_to_z(x) #ground truth
         
+        # print("z_indices shape:", z_indices.shape) 
+
         # decide number of token to be masked
         mask_ratio = torch.rand(1).item()
         num_masked = int(self.num_image_tokens * self.gamma(mask_ratio))
 
         # mask
         mask = torch.zeros_like(z_indices, dtype=torch.bool)
-        mask_indices = torch.randperm(self.num_image_tokens)[:num_masked]
-        mask[mask_indices] = True
+
+        for i in range(batch_size):
+            mask_indices = torch.randperm(self.num_image_tokens, device=z_indices.device)[:num_masked]
+            for idx in mask_indices:
+                mask[i, idx] = True
 
         z_indices_masked = z_indices.clone()
         z_indices_masked[mask] = self.mask_token_id
 
+        # print("z_indices_masked shape:", z_indices_masked.shape)
 
         logits = self.transformer(z_indices_masked)  #transformer predict the probability of tokens
         return logits, z_indices
