@@ -14,9 +14,18 @@ from torch.utils.data import DataLoader
 #TODO2 step1-4: design the transformer training strategy
 class TrainTransformer:
     def __init__(self, args, MaskGit_CONFIGS):
-        self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=args.device)
+        if ',' in args.device:
+            gpu_ids = [int(id) for id in args.device.split(',')]
+            primary_device = f"cuda:{gpu_ids[0]}"
+            print(f"主設備: {primary_device}, GPU IDs: {gpu_ids}")
+            self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=primary_device)
+            self.model = nn.DataParallel(self.model, device_ids=gpu_ids)
+            self.device = primary_device
+        else:
+            self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=args.device)
+            self.device = args.device
+
         self.args = args
-        self.device = args.device
         self.optim,self.scheduler = self.configure_optimizers()
         self.prepare_training()
         self.best_val_loss = float('inf')
