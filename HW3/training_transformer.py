@@ -14,16 +14,8 @@ from torch.utils.data import DataLoader
 #TODO2 step1-4: design the transformer training strategy
 class TrainTransformer:
     def __init__(self, args, MaskGit_CONFIGS):
-        if ',' in args.device:
-            gpu_ids = [int(id) for id in args.device.split(',')]
-            primary_device = f"cuda:{gpu_ids[0]}"
-            print(f"主設備: {primary_device}, GPU IDs: {gpu_ids}")
-            self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=primary_device)
-            self.model = nn.DataParallel(self.model, device_ids=gpu_ids)
-            self.device = primary_device
-        else:
-            self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=args.device)
-            self.device = args.device
+        self.model = VQGANTransformer(MaskGit_CONFIGS["model_param"]).to(device=args.device)
+        self.device = args.device
 
         self.args = args
         self.optim,self.scheduler = self.configure_optimizers()
@@ -96,9 +88,10 @@ class TrainTransformer:
         }, checkpoint_path)
         
         if is_best:
-            torch.save(self.model.state_dict(), best_model_path)
+            transformer_state_dict = self.model.transformer.state_dict()
+            torch.save(transformer_state_dict, best_model_path)
             print(f"Saved best model to {best_model_path}")
-            
+                    
         print(f"Saved checkpoint to {checkpoint_path}")
         
 
@@ -123,7 +116,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_d_path', type=str, default="lab3_dataset/train", help='Training Dataset Path')
     parser.add_argument('--val_d_path', type=str, default="lab3_dataset/val", help='Validation Dataset Path')
     parser.add_argument('--checkpoint-path', type=str, default='./checkpoints/last_ckpt.pt', help='Path to checkpoint.')
-    parser.add_argument('--device', type=str, default="cuda:1", help='Which device the training is on.')
+    parser.add_argument('--device', type=str, default="cuda:0", help='Which device the training is on.')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker')
     parser.add_argument('--batch-size', type=int, default=10, help='Batch size for training.')
     parser.add_argument('--partial', type=float, default=1.0, help='Number of epochs to train (default: 50)')    
