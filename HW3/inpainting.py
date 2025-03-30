@@ -43,8 +43,9 @@ class MaskGIT:
         with torch.no_grad():
             z_indices = self.model.encode_to_z(image) #z_indices: masked tokens (b,16*16)
             mask_num = mask_b.sum() #total number of mask token 
-            z_indices_predict=z_indices
-            mask_bc=mask_b
+            z_indices_predict=z_indices.clone()
+            mask_bc=mask_b.clone()
+            
             mask_b=mask_b.to(device=self.device)
             mask_bc=mask_bc.to(device=self.device)
 
@@ -64,14 +65,43 @@ class MaskGIT:
                     ratio
                 )
 
+                remaining_masks = (z_indices_predict == self.model.mask_token_id)
+                # if remaining_masks.sum() > 0:
+                #     print(f"Step {step}: {remaining_masks.sum().item()} mask tokens remain")
+
+                if step == self.sweet_spot - 1 and remaining_masks.sum() > 0:
+                    print(f"At sweet_spot, forcing replacement of {remaining_masks.sum().item()} remaining mask tokens")
+                    # 獲取模型對所有位置的預測
+                    logits = self.model.transformer(z_indices_predict)
+                    logits = torch.softmax(logits, dim=-1)
+                    
+                    # 設置遮罩標記的概率為-inf，確保不會選中它
+                    logits[:, :, self.model.mask_token_id] = -float('inf')
+                    
+                    # 選擇每個位置概率最高的token
+                    _, best_tokens = torch.max(logits, dim=-1)
+                    
+                    # 只替換剩餘的遮罩位置
+                    z_indices_predict[remaining_masks] = best_tokens[remaining_masks]
+                    
+                    # 更新mask_bc，將所有標記設為已處理
+                    mask_bc.fill_(False)
+
+                # print(f"After model.inpainting - z_indices_predict shape: {z_indices_predict.shape}")
+                # print(f"After model.inpainting - z_indices_predict min: {z_indices_predict.min().item()}, max: {z_indices_predict.max().item()}")
+
                 #static method yon can modify or not, make sure your visualization results are correct
                 mask_i=mask_bc.view(1, 16, 16)
                 mask_image = torch.ones(3, 16, 16)
-                indices = torch.nonzero(mask_i, as_tuple=False)#label mask true
+                indices = torch.nonzero(mask_i, as_tuple=False) #label mask true
                 mask_image[:, indices[:, 1], indices[:, 2]] = 0 #3,16,16
                 maska[step]=mask_image
                 shape=(1,16,16,256)
-                z_q = self.model.vqgan.codebook.embedding(z_indices_predict).view(shape)
+
+                max_idx = self.model.vqgan.codebook.embedding.weight.size(0) - 1
+                safe_indices = torch.clamp(z_indices_predict, 0, max_idx)
+
+                z_q = self.model.vqgan.codebook.embedding(safe_indices).view(shape)
                 z_q = z_q.permute(0, 3, 1, 2)
                 decoded_img=self.model.vqgan.decode(z_q)
                 dec_img_ori=(decoded_img[0]*std)+mean
@@ -117,7 +147,7 @@ class MaskedImage:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="MaskGIT for Inpainting")
-    parser.add_argument('--device', type=str, default="cuda", help='Which device the training is on.')#cuda
+    parser.add_argument('--device', type=str, default="cuda:7", help='Which device the training is on.')#cuda
     parser.add_argument('--batch-size', type=int, default=1, help='Batch size for testing.')
     parser.add_argument('--partial', type=float, default=1.0, help='Number of epochs to train (default: 50)')    
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker')
@@ -129,8 +159,8 @@ if __name__ == '__main__':
     parser.add_argument('--load-transformer-ckpt-path', type=str, default='transformer_checkpoints/best_model.pt', help='load ckpt')
     
     #dataset path
-    parser.add_argument('--test-maskedimage-path', type=str, default='./cat_face/masked_image', help='Path to testing image dataset.')
-    parser.add_argument('--test-mask-path', type=str, default='./mask64', help='Path to testing mask dataset.')
+    parser.add_argument('--test-maskedimage-path', type=str, default='lab3_dataset/masked_image', help='Path to testing image dataset.')
+    parser.add_argument('--test-mask-path', type=str, default='lab3_dataset/mask64', help='Path to testing mask dataset.')
     #MVTM parameter
     parser.add_argument('--sweet-spot', type=int, default=8, help='sweet spot: the best step in total iteration')
     parser.add_argument('--total-iter', type=int, default=12, help='total step for mask scheduling')
@@ -149,6 +179,3 @@ if __name__ == '__main__':
         mask_b=t.get_mask_latent(mask)       
         maskgit.inpainting(image,mask_b,i)
         i+=1
-        
-
-
