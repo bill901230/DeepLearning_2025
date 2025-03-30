@@ -376,7 +376,7 @@ parser.add_argument('--dims', type=int, default=2048,
 parser.add_argument('--save-stats', action='store_true',
                     help=('Generate an npz archive from a directory of samples. '
                           'The first path is used as input and the second as output.'))
-parser.add_argument('--predicted-path', type=str, default="/home/wendy/Maskgit_CIFAR10cat/models/VQGAN/test_i")
+parser.add_argument('--predicted-path', type=str, default="../test_results")
 
 parser.add_argument('--gtcsv-path', type=str, default="./test_gt.csv")
 
