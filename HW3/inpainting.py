@@ -11,6 +11,7 @@ import os
 from models import MaskGit as VQGANTransformer
 import yaml
 import torch.nn.functional as F
+import math
 
 class MaskGIT:
     def __init__(self, args, MaskGit_CONFIGS):
@@ -25,7 +26,7 @@ class MaskGIT:
 
     @staticmethod
     def prepare():
-        os.makedirs("test_results", exist_ok=True)
+        os.makedirs(f"test_results", exist_ok=True)
         os.makedirs("mask_scheduling", exist_ok=True)
         os.makedirs("imga", exist_ok=True)
 
@@ -55,14 +56,15 @@ class MaskGIT:
             #iterative decoding for loop design
             #Hint: it's better to save original mask and the updated mask by scheduling separately
             for step in range(self.total_iter):
-                if step == self.sweet_spot:
-                    break
-                ratio = step / self.total_iter
+                # if step == self.sweet_spot:
+                #     break
+                ratio = (step+1)/ self.total_iter
     
                 z_indices_predict, mask_bc = self.model.inpainting(
                     z_indices_predict, 
-                    mask_bc, 
-                    ratio
+                    mask_b, 
+                    ratio,
+                    mask_num
                 )
 
                 remaining_masks = (z_indices_predict == self.model.mask_token_id)
@@ -71,24 +73,20 @@ class MaskGIT:
 
                 if step == self.sweet_spot - 1 and remaining_masks.sum() > 0:
                     print(f"At sweet_spot, forcing replacement of {remaining_masks.sum().item()} remaining mask tokens")
-                    # 獲取模型對所有位置的預測
                     logits = self.model.transformer(z_indices_predict)
                     logits = torch.softmax(logits, dim=-1)
                     
-                    # 設置遮罩標記的概率為-inf，確保不會選中它
                     logits[:, :, self.model.mask_token_id] = -float('inf')
                     
-                    # 選擇每個位置概率最高的token
                     _, best_tokens = torch.max(logits, dim=-1)
                     
-                    # 只替換剩餘的遮罩位置
                     z_indices_predict[remaining_masks] = best_tokens[remaining_masks]
                     
-                    # 更新mask_bc，將所有標記設為已處理
                     mask_bc.fill_(False)
 
-                # print(f"After model.inpainting - z_indices_predict shape: {z_indices_predict.shape}")
-                # print(f"After model.inpainting - z_indices_predict min: {z_indices_predict.min().item()}, max: {z_indices_predict.max().item()}")
+                print(f"Step {step}, Ratio: {ratio:.4f}, Masks before: {mask_bc.sum().item()}")
+                # 调用model.inpainting后
+                print(f"After inpainting, Masks remaining: {mask_bc.sum().item()}")
 
                 #static method yon can modify or not, make sure your visualization results are correct
                 mask_i=mask_bc.view(1, 16, 16)
@@ -108,11 +106,11 @@ class MaskGIT:
                 imga[step+1]=dec_img_ori #get decoded image
 
             ##decoded image of the sweet spot only, the test_results folder path will be the --predicted-path for fid score calculation
-            vutils.save_image(dec_img_ori, os.path.join("test_results", f"image_{i:03d}.png"), nrow=1) 
+            vutils.save_image(dec_img_ori, os.path.join(f"test_results_{self.mask_func}", f"image_{i:03d}.png"), nrow=1) 
 
             #demo score 
-            vutils.save_image(maska, os.path.join("mask_scheduling", f"test_{i}.png"), nrow=10) 
-            vutils.save_image(imga, os.path.join("imga", f"test_{i}.png"), nrow=7)
+            vutils.save_image(maska, os.path.join(f"mask_scheduling_{self.mask_func}", f"test_{i}.png"), nrow=10) 
+            vutils.save_image(imga, os.path.join(f"imga_{self.mask_func}", f"test_{i}.png"), nrow=7)
 
 
 
@@ -162,8 +160,8 @@ if __name__ == '__main__':
     parser.add_argument('--test-maskedimage-path', type=str, default='lab3_dataset/masked_image', help='Path to testing image dataset.')
     parser.add_argument('--test-mask-path', type=str, default='lab3_dataset/mask64', help='Path to testing mask dataset.')
     #MVTM parameter
-    parser.add_argument('--sweet-spot', type=int, default=8, help='sweet spot: the best step in total iteration')
-    parser.add_argument('--total-iter', type=int, default=12, help='total step for mask scheduling')
+    parser.add_argument('--sweet-spot', type=int, default=20, help='sweet spot: the best step in total iteration')
+    parser.add_argument('--total-iter', type=int, default=20, help='total step for mask scheduling')
     parser.add_argument('--mask-func', type=str, default='cosine', help='mask scheduling function')
 
     args = parser.parse_args()
@@ -171,6 +169,7 @@ if __name__ == '__main__':
     t=MaskedImage(args)
     MaskGit_CONFIGS = yaml.safe_load(open(args.MaskGitConfig, 'r'))
     maskgit = MaskGIT(args, MaskGit_CONFIGS)
+    maskgit.model.set_mask_function(args.mask_func)
 
     i=0
     for image, mask in zip(t.mi_ori, t.mask_ori):

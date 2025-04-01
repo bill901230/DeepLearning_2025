@@ -1,98 +1,96 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch
+import math
+
+#TODO1
+class MultiHeadAttention(nn.Module):
+    def __init__(self, dim=768, num_heads=16, attn_drop=0.1):
+        super(MultiHeadAttention, self).__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.head_dim = dim//num_heads
+        assert self.head_dim * num_heads == dim
+
+        self.scale = math.sqrt(self.head_dim)
+
+        self.q_proj = nn.Linear(dim, dim)  # 查詢投影
+        self.k_proj = nn.Linear(dim, dim)  # 鍵投影
+        self.v_proj = nn.Linear(dim, dim)  # 值投影
+        self.out_proj = nn.Linear(dim, dim)  # 輸出投影
+
+        self.attn_drop = nn.Dropout(attn_drop)
+
+    def forward(self, x):
+        ''' Hint: input x tensor shape is (batch_size, num_image_tokens, dim), 
+            because the bidirectional transformer first will embed each token to dim dimension, 
+            and then pass to n_layers of encoders consist of Multi-Head Attention and MLP. 
+            # of head set 16
+            Total d_k , d_v set to 768
+            d_k , d_v for one head will be 768//16.
+        '''
+        batch_size, seq_len, dim = x.size()
+        q = self.q_proj(x)  # (batch_size, seq_len, dim)
+        k = self.k_proj(x)  # (batch_size, seq_len, dim)
+        v = self.v_proj(x)  # (batch_size, seq_len, dim)
+
+        q = q.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        k = k.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        v = v.view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+
+        attn_scores = (q @ k.transpose(-2, -1)) / self.scale
+        attn_probs = torch.softmax(attn_scores, dim=-1)
+        attn_probs = self.attn_drop(attn_probs)
+
+        context = (attn_probs @ v).transpose(1, 2).contiguous()
+        context = context.view(batch_size, seq_len, dim)
+        output = self.out_proj(context)  # (batch_size, seq_len, dim)
+
+        return output
 
 
-class ResidualBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(ResidualBlock, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.block = nn.Sequential(
-            GroupNorm(in_channels),
-            Swish(),
-            nn.Conv2d(in_channels, out_channels, 3, 1, 1),
-            GroupNorm(out_channels),
-            Swish(),
-            nn.Conv2d(out_channels, out_channels, 3, 1, 1)
+
+class MLP(nn.Sequential):
+    def __init__(self, dim=768, hidden_dim=3072, drop_rate=0.1):
+        super(MLP, self).__init__(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, dim),
+            nn.Dropout(p=0.1)
         )
-        if in_channels != out_channels:
-            self.channel_up = nn.Conv2d(in_channels, out_channels, 1, 1, 0)
+        
+    def forward(self, input):
+        return super().forward(input)
+    
+    
+class TokenPredictor(nn.Sequential):
+    def __init__(self, dim=768):
+        super(TokenPredictor, self).__init__(
+            nn.Linear(in_features=dim, out_features=dim),
+            nn.GELU(),
+            nn.LayerNorm(dim, eps=1e-12)
+        )
+        
+    def forward(self, input):
+        return super().forward(input)
+    
+    
+class Encoder(nn.Module):
+    def __init__(self, dim=768, hidden_dim=1536):
+        super(Encoder, self).__init__()
+        self.Attention = MultiHeadAttention(dim)
+        self.LayerNorm1 = nn.LayerNorm(dim, eps=1e-12)
+        self.LayerNorm2 = nn.LayerNorm(dim, eps=1e-12)
+        self.MLP = MLP(dim, hidden_dim)
+        self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, x):
-        if self.in_channels != self.out_channels:
-            return self.block(x) + self.channel_up(x)
-        else:
-            return x + self.block(x)
-
-
-class UpSampleBlock(nn.Module):
-    def __init__(self, channels):
-        super(UpSampleBlock, self).__init__()
-        self.conv = nn.Conv2d(channels, channels, 3, 1, 1)
-
-    def forward(self, x):
-        x = F.interpolate(x, scale_factor=2.)
-        return self.conv(x)
-
-
-class DownSampleBlock(nn.Module):
-    def __init__(self, channels):
-        super(DownSampleBlock, self).__init__()
-        self.conv = nn.Conv2d(channels, channels, 3, 2, 0)
-
-    def forward(self, x):
-        pad = (0, 1, 0, 1)
-        x = F.pad(x, pad, mode="constant", value=0)
-        return self.conv(x)
-
-
-class NonLocalBlock(nn.Module):
-    def __init__(self, in_channels):
-        super().__init__()
-        self.in_channels = in_channels
-
-        self.norm = GroupNorm(in_channels)
-        self.q = torch.nn.Conv2d(in_channels, in_channels, 1, 1, 0)
-        self.k = torch.nn.Conv2d(in_channels, in_channels, 1, 1, 0)
-        self.v = torch.nn.Conv2d(in_channels, in_channels, 1, 1, 0)
-        self.proj_out = torch.nn.Conv2d(in_channels, in_channels, 1, 1, 0)
-
-    def forward(self, x):
-        h_ = self.norm(x)
-        q = self.q(h_)
-        k = self.k(h_)
-        v = self.v(h_)
-
-        b, c, h, w = q.shape
-
-        q = q.reshape(b, c, h * w)
-        q = q.permute(0, 2, 1)
-        k = k.reshape(b, c, h * w)
-        v = v.reshape(b, c, h * w)
-
-        attn = torch.bmm(q, k)
-        attn = attn * (int(c) ** (-0.5))
-        attn = F.softmax(attn, dim=2)
-
-        attn = attn.permute(0, 2, 1)
-        A = torch.bmm(v, attn)
-        A = A.reshape(b, c, h, w)
-
-        A = self.proj_out(A)
-
-        return x + A
-
-
-class GroupNorm(nn.Module):
-    def __init__(self, in_channels):
-        super(GroupNorm, self).__init__()
-        self.gn = nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
-
-    def forward(self, x):
-        return self.gn(x)
-
-
-class Swish(nn.Module):
-    def forward(self, x):
-        return x * torch.sigmoid(x)
+        attn = self.Attention(x)
+        attn = self.dropout(attn)
+        
+        x = x + attn
+        x = self.LayerNorm1(x)
+        
+        mlp = self.MLP(x)
+        x = x + mlp
+        return self.LayerNorm2(x)
+    

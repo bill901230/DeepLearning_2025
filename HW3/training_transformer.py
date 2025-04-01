@@ -76,8 +76,8 @@ class TrainTransformer:
         return avg_loss
     
     def save_checkpoint(self, epoch, is_best=False):
-        checkpoint_path = os.path.join('transformer_checkpoints', f'epoch_{epoch}.pt')
-        best_model_path = os.path.join('transformer_checkpoints', 'best_model.pt')
+        checkpoint_path = os.path.join('transformer_checkpoints128', f'epoch_{epoch}.pt')
+        best_model_path = os.path.join('transformer_checkpoints128', 'best_model.pt')
         
         torch.save({
             'epoch': epoch,
@@ -96,6 +96,20 @@ class TrainTransformer:
         
 
     def configure_optimizers(self):
+        # optimizer = torch.optim.Adam(
+        #     self.model.transformer.parameters(), 
+        #     lr=1e-4, betas=(0.9, 0.96), 
+        #     weight_decay=4.5e-2
+        # )
+        # scheduler = WarmupLinearLRSchedule(
+        #     optimizer=self.optim,
+        #     init_lr=1e-6,
+        #     peak_lr=args.learning_rate,
+        #     end_lr=0.,
+        #     warmup_epochs=10,
+        #     epochs=args.epochs,
+        #     current_step=args.start_from_epoch
+        # )
         optimizer = torch.optim.AdamW(
             self.model.parameters(),
             lr=self.args.learning_rate,
@@ -116,7 +130,7 @@ if __name__ == '__main__':
     parser.add_argument('--train_d_path', type=str, default="lab3_dataset/train", help='Training Dataset Path')
     parser.add_argument('--val_d_path', type=str, default="lab3_dataset/val", help='Validation Dataset Path')
     parser.add_argument('--checkpoint-path', type=str, default='./checkpoints/last_ckpt.pt', help='Path to checkpoint.')
-    parser.add_argument('--device', type=str, default="cuda:0", help='Which device the training is on.')
+    parser.add_argument('--device', type=str, default="cuda:5", help='Which device the training is on.')
     parser.add_argument('--num_workers', type=int, default=4, help='Number of worker')
     parser.add_argument('--batch-size', type=int, default=10, help='Batch size for training.')
     parser.add_argument('--partial', type=float, default=1.0, help='Number of epochs to train (default: 50)')    
