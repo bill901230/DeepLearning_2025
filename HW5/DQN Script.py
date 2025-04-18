@@ -160,9 +160,7 @@ class DQNAgent:
                 action = self.select_action(state)
                 next_obs, reward, terminated, truncated, _ = self.env.step(action)
                 done = terminated or truncated
-                if done:
-                    break
-
+                
                 next_state = self.preprocessor.step(next_obs)
                 self.memory.append((state, action, reward, next_state, done))
 
