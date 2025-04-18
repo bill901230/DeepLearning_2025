@@ -1,3 +1,4 @@
+#modules.py
 import torch.nn as nn
 import torch
 from .layers import DepthConvBlock, ResidualBlock
@@ -75,9 +76,14 @@ class Gaussian_Predictor(nn.Sequential):
             nn.Conv2d(out_chans, out_chans*2, kernel_size=1)
         )
         
-    def reparameterize(self, mu, logvar):
-        # TODO
-        raise NotImplementedError
+    def reparameterize(self, mu, logvar):  # logvar = log(σ²)
+        # μ 跟 σ 是不可導的隨機函數，反向傳播無法知道 μ 或 σ 的微小變動如何影響
+        if self.training:
+            std = torch.exp(0.5 * logvar)  # 取 exp(logvar/2) 得到標準差 σ
+            eps = torch.randn_like(std)  # 從標準正態分佈 N(0, 1) 中採樣 ε
+            return mu + eps * std  # 取 μ + ε * σ 得到 z
+        else:
+            return mu
 
     def forward(self, img, label):
         feature = torch.cat([img, label], dim=1)
@@ -102,10 +108,6 @@ class Decoder_Fusion(nn.Sequential):
     def forward(self, img, label, parm):
         feature = torch.cat([img, label, parm], dim=1)
         return super().forward(feature)
-    
-
-    
-        
     
 if __name__ == '__main__':
     pass

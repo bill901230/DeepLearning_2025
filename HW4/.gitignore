@@ -1,1 +1,7 @@
 dataset/
+checkpoint*/
+*.png
+*.gif
+*.ckpt
+*.csv
+event*

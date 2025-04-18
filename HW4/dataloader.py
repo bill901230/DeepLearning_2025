@@ -1,12 +1,12 @@
-
+# dataloader.py
 import os
 from glob import glob
 import torch
 from torch import stack
 from torch.utils.data import Dataset as torchData
-
 from torchvision.datasets.folder import default_loader as imgloader
 from torch import stack
+
 def get_key(fp):
     filename = fp.split('/')[-1]
     filename = filename.split('.')[0].replace('frame', '')

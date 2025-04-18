@@ -1,3 +1,4 @@
+#Tester.py
 import os
 import argparse
 import numpy as np
@@ -44,7 +45,9 @@ class Dataset_Dance(torchData):
         self.img_folder = []
         self.label_folder = []
         
-        data_num = len(glob('./Demo_Test/*'))
+        # data_num = len(glob('./Demo_Test/*'))
+        test_img_dirs = sorted(glob(os.path.join(root, 'test/test_img/*')))
+        data_num = len(test_img_dirs)
         for i in range(data_num):
             self.img_folder.append(sorted(glob(os.path.join(root , f'test/test_img/{i}/*')), key=get_key))
             self.label_folder.append(sorted(glob(os.path.join(root , f'test/test_label/{i}/*')), key=get_key))
@@ -122,9 +125,23 @@ class Test_model(VAE_Model):
         decoded_frame_list = [img[0].cpu()]
         label_list = []
 
-        # TODO
-        raise NotImplementedError
+        prev_img = img[0]
+        prev_img_feat = self.frame_transformation(prev_img)
+        
+        for i in range(label.shape[0] - 1):
+            current_label = label[i]
+            current_label_feat = self.label_transformation(current_label)
             
+            z = torch.randn(1, self.args.N_dim, current_label.shape[2], current_label.shape[3], device=self.args.device)
+            
+            fusion_feat = self.Decoder_Fusion(prev_img_feat, current_label_feat, z)
+            pred_frame = self.Generator(fusion_feat)
+            
+            decoded_frame_list.append(pred_frame.cpu())
+            label_list.append(current_label.cpu())
+            
+            prev_img = pred_frame
+            prev_img_feat = self.frame_transformation(prev_img)
         
         # Please do not modify this part, it is used for visulization
         generated_frame = stack(decoded_frame_list).permute(1, 0, 2, 3, 4)
